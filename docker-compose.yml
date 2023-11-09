@@ -1,0 +1,110 @@
+﻿version: '3.8'
+
+networks:
+    frontend:
+        driver: bridge
+    backend:
+        driver: bridge
+    my_network:
+        driver: bridge
+
+services:
+    ws:
+        container_name: laravel-admin-panel_ws
+        environment:
+            - LANG=en_US.UTF-8
+            - LC_ALL=
+            - LANGUAGE=en_US.UTF-8
+            - LC_CTYPE=en_US.UTF-8
+        build:
+            dockerfile: docker/php82/workspace/Dockerfile
+            context: .
+            args:
+                - INSTALL_XDEBUG=true
+        ports:
+            - "2222:22"
+            - "9000"
+        volumes:
+            - ./:/var/www/laravel-admin-panel:cached
+            - ./docker/data/log:/var/log:cached
+            - ./docker/data/tmp:/tmp
+        networks:
+            - backend
+        tty: true
+
+    fpm:
+        container_name: laravel-admin-panel_fpm
+        environment:
+            - LANG=en_US.UTF-8
+            - LC_ALL=
+            - LANGUAGE=en_US.UTF-8
+            - LC_CTYPE=en_US.UTF-8
+            - PHP_IDE_CONFIG=serverName=local
+        build:
+            dockerfile: docker/php82/fpm/Dockerfile
+            context: .
+            args:
+                - INSTALL_XDEBUG=true
+        expose:
+            - 9000
+        volumes:
+            - ./:/var/www/laravel-admin-panel:cached
+            - ./docker/data/log:/var/log:cached
+            - ./docker/data/tmp:/tmp
+            - ./docker/php82/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+        networks:
+            - backend
+        extra_hosts:
+            - host.docker.internal:host-gateway
+
+    memcache:
+        container_name: laravel-admin-panel_memcache
+        image: memcached:1.6.19
+        ports:
+            - "11211:11211"
+        networks:
+            - backend
+
+    nginx:
+        container_name: laravel-admin-panel_nginx
+        image: nginx:latest
+        ports:
+            - "80:80"
+        depends_on:
+            - fpm
+        volumes:
+            - ./docker/nginx/config/:/etc/nginx/conf.d/
+            - ./:/var/www/laravel-admin-panel:cached
+            - ./docker/data/log:/var/log:cached
+        networks:
+            - backend
+            - frontend
+
+    postgres:
+        container_name: laravel-admin-panel_postgres
+        image: postgres:latest
+        environment:
+            POSTGRES_DB: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: 12345
+            POSTGRES_HOST_AUTH_METHOD: trust
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+            - ./docker/postgres/conf.d:/etc/postgresql/conf.d:ro
+            #- ./docker/postgres/docker-entrypoint-initdb.d/conf/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf:ro
+        ports:
+            - "5432:5432"
+        networks:
+            - backend
+            - frontend
+        deploy:
+            resources:
+                limits:
+                    memory: 2g
+                reservations:
+                    memory: 500m
+
+volumes:
+    pgdata:
+        driver: local
+    nginx_logs:
